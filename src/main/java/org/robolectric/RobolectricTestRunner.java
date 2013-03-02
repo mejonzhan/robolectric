@@ -22,7 +22,6 @@ import org.robolectric.res.RoutingResourceLoader;
 import org.robolectric.shadows.ShadowApplication;
 import org.robolectric.shadows.ShadowLog;
 import org.robolectric.shadows.ShadowResources;
-import org.robolectric.util.DatabaseConfig;
 import org.robolectric.util.DatabaseConfig.DatabaseMap;
 import org.robolectric.util.DatabaseConfig.UsingDatabaseMap;
 import org.robolectric.util.SQLiteMap;
@@ -45,7 +44,7 @@ import static org.robolectric.Robolectric.shadowOf;
  * {@link org.robolectric.res.ResourceLoader} in order to
  * provide a simulation of the Android runtime environment.
  */
-public class RobolectricTestRunner extends BlockJUnit4ClassRunner implements RobolectricTestRunnerInterface {
+public class RobolectricTestRunner extends BlockJUnit4ClassRunner {
     private static Map<AndroidManifest, ResourceLoader> resourceLoadersByAppManifest = new HashMap<AndroidManifest, ResourceLoader>();
     private static Map<ResourcePath, ResourceLoader> systemResourceLoaders = new HashMap<ResourcePath, ResourceLoader>();
 
@@ -53,8 +52,10 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner implements Rob
     RobolectricContext sharedRobolectricContext;
 
     // fields in the RobolectricTestRunner in the original ClassLoader
-    private RobolectricTestRunnerInterface delegate;
     private final DatabaseMap databaseMap;
+    private final Class<?> bootstrappedTestClass;
+    private final HelperTestRunner helperTestRunner;
+    private RobolectricTestRunnerInterface testLifecycle;
 
     /**
      * Creates a runner to run {@code testClass}. Looks in your working directory for your AndroidManifest.xml file
@@ -73,13 +74,23 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner implements Rob
 
         sharedRobolectricContext = RobolectricContext.mostRecentRobolectricContext; // ick, race condition
 
-        if (isBootstrapped(getClass())) {
-            databaseMap = setupDatabaseMap(testClass, new SQLiteMap());
-        } else {
-            delegate = sharedRobolectricContext.getBootstrappedTestRunner(this);
-            Thread.currentThread().setContextClassLoader(sharedRobolectricContext.getRobolectricClassLoader());
-            databaseMap = null;
+        bootstrappedTestClass = sharedRobolectricContext.bootstrapTestClass(getTestClass().getJavaClass());
+        helperTestRunner = new HelperTestRunner();
+        try {
+            testLifecycle = getTestLifecycleClass().newInstance();
+            testLifecycle.init(bootstrappedTestClass, sharedRobolectricContext);
+        } catch (InstantiationException e) {
+            throw new RuntimeException(e);
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
         }
+
+        databaseMap = setupDatabaseMap(testClass, new SQLiteMap());
+        Thread.currentThread().setContextClassLoader(sharedRobolectricContext.getRobolectricClassLoader());
+    }
+
+    protected Class<? extends TestLifecycle> getTestLifecycleClass() {
+        return TestLifecycle.class;
     }
 
     public RobolectricContext getRobolectricContext() {
@@ -93,13 +104,13 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner implements Rob
     @Override protected Statement methodBlock(final FrameworkMethod method) {
         sharedRobolectricContext.getClassHandler().reset();
       try {
-        delegate.internalBeforeTest(method.getMethod());
+        testLifecycle.internalBeforeTest(method.getMethod());
       } catch (Exception e) {
         e.printStackTrace();
         throw new RuntimeException(e);
       }
 
-      final Statement statement = super.methodBlock(method);
+      final Statement statement = helperTestRunner.methodBlock(method);
         return new Statement() {
             @Override public void evaluate() throws Throwable {
                 Map<Field, Object> withConstantAnnos = getWithConstantAnnotations(method.getMethod());
@@ -117,46 +128,142 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner implements Rob
                 		}
                 	}
                 } finally {
-                    delegate.internalAfterTest(method.getMethod());
+                    testLifecycle.internalAfterTest(method.getMethod());
                 }
             }
         };
     }
 
-    /*
-     * Called before each test method is run. Sets up the simulation of the Android runtime environment.
-     */
-    @Override final public void internalBeforeTest(final Method method) {
-        setupLogging();
-        configureShadows(method);
+    protected static class TestLifecycle implements RobolectricTestRunnerInterface {
+        private Class<?> bootstrappedTestClass;
+        private RobolectricContext robolectricContext;
 
-        resetStaticState();
+        @Override public void init(Class<?> bootstrappedTestClass, RobolectricContext robolectricContext) {
+            this.bootstrappedTestClass = bootstrappedTestClass;
+            this.robolectricContext = robolectricContext;
+        }
 
-        DatabaseConfig.setDatabaseMap(databaseMap); //Set static DatabaseMap in DBConfig
+        /*
+                         * Called before each test method is run. Sets up the simulation of the Android runtime environment.
+                         */
+        @Override final public void internalBeforeTest(final Method method) {
+            setupLogging();
+            configureShadows(method);
 
-        setupApplicationState(method);
+            resetStaticState();
 
-        beforeTest(method);
-    }
+//            DatabaseConfig.setDatabaseMap(databaseMap); //Set static DatabaseMap in DBConfig
 
-    @Override public void internalAfterTest(final Method method) {
-        afterTest(method);
-    }
+            setupApplicationState(method);
 
-    /**
-     * Called before each test method is run.
-     *
-     * @param method the test method about to be run
-     */
-    public void beforeTest(final Method method) {
-    }
+            beforeTest(method);
+        }
 
-    /**
-     * Called after each test method is run.
-     *
-     * @param method the test method that just ran.
-     */
-    public void afterTest(final Method method) {
+        @Override public void internalAfterTest(final Method method) {
+            afterTest(method);
+        }
+
+        /**
+         * Called before each test method is run.
+         *
+         * @param method the test method about to be run
+         */
+        public void beforeTest(final Method method) {
+        }
+
+        /**
+         * Called after each test method is run.
+         *
+         * @param method the test method that just ran.
+         */
+        public void afterTest(final Method method) {
+        }
+
+        public void prepareTest(final Object test) {
+        }
+
+        public void setupApplicationState(Method testMethod) {
+            boolean strictI18n = determineI18nStrictState(testMethod);
+
+            ResourceLoader systemResourceLoader = getSystemResourceLoader(robolectricContext.getSystemResourcePath());
+            ShadowResources.setSystemResources(systemResourceLoader);
+
+            ClassHandler classHandler = robolectricContext.getClassHandler();
+            classHandler.setStrictI18n(strictI18n);
+
+            AndroidManifest appManifest = robolectricContext.getAppManifest();
+            ResourceLoader resourceLoader = getAppResourceLoader(systemResourceLoader, appManifest);
+
+            Robolectric.application = ShadowApplication.bind(createApplication(), appManifest, resourceLoader);
+            shadowOf(Robolectric.application).setStrictI18n(strictI18n);
+
+            String qualifiers = determineResourceQualifiers(testMethod);
+            shadowOf(Resources.getSystem().getConfiguration()).overrideQualifiers(qualifiers);
+            shadowOf(Robolectric.application.getResources().getConfiguration()).overrideQualifiers(qualifiers);
+        }
+
+        protected void configureShadows(Method testMethod) { // todo: dedupe this/bindShadowClasses
+            Robolectric.bindDefaultShadowClasses();
+            bindShadowClasses(testMethod);
+        }
+
+        /**
+         * Override this method to bind your own shadow classes
+         */
+        @SuppressWarnings("UnusedParameters")
+        protected void bindShadowClasses(Method testMethod) {
+            bindShadowClasses();
+        }
+
+        /**
+         * Override this method to bind your own shadow classes
+         */
+        protected void bindShadowClasses() {
+        }
+
+        /**
+         * Override this method to reset the state of static members before each test.
+         */
+        protected void resetStaticState() {
+            Robolectric.resetStaticState();
+        }
+
+        /**
+         * Override this method if you want to provide your own implementation of Application.
+         * <p/>
+         * This method attempts to instantiate an application instance as specified by the AndroidManifest.xml.
+         *
+         * @return An instance of the Application class specified by the ApplicationManifest.xml or an instance of
+         *         Application if not specified.
+         */
+        protected Application createApplication() {
+            return new ApplicationResolver(robolectricContext.getAppManifest()).resolveApplication();
+        }
+
+        private void setupLogging() {
+            String logging = System.getProperty("robolectric.logging");
+            if (logging != null && ShadowLog.stream == null) {
+                PrintStream stream = null;
+                if ("stdout".equalsIgnoreCase(logging)) {
+                    stream = System.out;
+                } else if ("stderr".equalsIgnoreCase(logging)) {
+                    stream = System.err;
+                } else {
+                    try {
+                        final PrintStream file = new PrintStream(new FileOutputStream(logging));
+                        stream = file;
+                        Runtime.getRuntime().addShutdownHook(new Thread() {
+                            @Override public void run() {
+                                try { file.close(); } catch (Exception ignored) { }
+                            }
+                        });
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+                ShadowLog.stream = stream;
+            }
+        }
     }
 
     /**
@@ -166,65 +273,12 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner implements Rob
      */
     @Override
     public Object createTest() throws Exception {
-        if (delegate != null) {
-            return delegate.createTest();
-        } else {
-            Object test = super.createTest();
-            prepareTest(test);
-            return test;
-        }
+        Object test = super.createTest();
+        testLifecycle.prepareTest(test);
+        return test;
     }
 
-    public void prepareTest(final Object test) {
-    }
-
-    public void setupApplicationState(Method testMethod) {
-        boolean strictI18n = determineI18nStrictState(testMethod);
-
-        ResourceLoader systemResourceLoader = getSystemResourceLoader(sharedRobolectricContext.getSystemResourcePath());
-        ShadowResources.setSystemResources(systemResourceLoader);
-
-        ClassHandler classHandler = sharedRobolectricContext.getClassHandler();
-        classHandler.setStrictI18n(strictI18n);
-
-        AndroidManifest appManifest = sharedRobolectricContext.getAppManifest();
-        ResourceLoader resourceLoader = getAppResourceLoader(systemResourceLoader, appManifest);
-
-        Robolectric.application = ShadowApplication.bind(createApplication(), appManifest, resourceLoader);
-        shadowOf(Robolectric.application).setStrictI18n(strictI18n);
-
-        String qualifiers = determineResourceQualifiers(testMethod);
-        shadowOf(Resources.getSystem().getConfiguration()).overrideQualifiers(qualifiers);
-        shadowOf(Robolectric.application.getResources().getConfiguration()).overrideQualifiers(qualifiers);
-    }
-
-    protected void configureShadows(Method testMethod) { // todo: dedupe this/bindShadowClasses
-        Robolectric.bindDefaultShadowClasses();
-        bindShadowClasses(testMethod);
-    }
-
-    /**
-     * Override this method to bind your own shadow classes
-     */
-    @SuppressWarnings("UnusedParameters")
-    protected void bindShadowClasses(Method testMethod) {
-        bindShadowClasses();
-    }
-
-    /**
-     * Override this method to bind your own shadow classes
-     */
-    protected void bindShadowClasses() {
-    }
-
-    /**
-     * Override this method to reset the state of static members before each test.
-     */
-    protected void resetStaticState() {
-        Robolectric.resetStaticState();
-    }
-
-    private String determineResourceQualifiers(Method method) {
+    public static String determineResourceQualifiers(Method method) {
         String qualifiers = "";
         Values values = method.getAnnotation(Values.class);
         if (values != null) {
@@ -251,7 +305,7 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner implements Rob
      * @param method
      *
      */
-    private boolean determineI18nStrictState(Method method) {
+    public static boolean determineI18nStrictState(Method method) {
     	// Global
     	boolean strictI18n = globalI18nStrictEnabled();
 
@@ -284,7 +338,7 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner implements Rob
      *
      * @return
      */
-    protected boolean globalI18nStrictEnabled() {
+    protected static boolean globalI18nStrictEnabled() {
     	return Boolean.valueOf(System.getProperty("robolectric.strictI18n"));
     }
 
@@ -323,10 +377,10 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner implements Rob
         try {
         	String name = anno.annotationType().getName();
         	Object newValue = null;
-    	
+
 	    	if (name.equals(WithConstantString.class.getName())) {
 	    		newValue = (String) anno.annotationType().getMethod("newValue").invoke(anno);
-	    	} 
+	    	}
 	    	else if (name.equals(WithConstantInt.class.getName())) {
 	    		newValue = (Integer) anno.annotationType().getMethod("newValue").invoke(anno);
 	    	}
@@ -360,44 +414,7 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner implements Rob
         }
     }
 
-    private void setupLogging() {
-        String logging = System.getProperty("robolectric.logging");
-        if (logging != null && ShadowLog.stream == null) {
-            PrintStream stream = null;
-            if ("stdout".equalsIgnoreCase(logging)) {
-                stream = System.out;
-            } else if ("stderr".equalsIgnoreCase(logging)) {
-                stream = System.err;
-            } else {
-                try {
-                    final PrintStream file = new PrintStream(new FileOutputStream(logging));
-                    stream = file;
-                    Runtime.getRuntime().addShutdownHook(new Thread() {
-                        @Override public void run() {
-                            try { file.close(); } catch (Exception ignored) { }
-                        }
-                    });
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-            ShadowLog.stream = stream;
-        }
-    }
-
-    /**
-     * Override this method if you want to provide your own implementation of Application.
-     * <p/>
-     * This method attempts to instantiate an application instance as specified by the AndroidManifest.xml.
-     *
-     * @return An instance of the Application class specified by the ApplicationManifest.xml or an instance of
-     *         Application if not specified.
-     */
-    protected Application createApplication() {
-        return new ApplicationResolver(sharedRobolectricContext.getAppManifest()).resolveApplication();
-    }
-
-    private ResourceLoader getSystemResourceLoader(ResourcePath systemResourcePath) {
+    public static ResourceLoader getSystemResourceLoader(ResourcePath systemResourcePath) {
         ResourceLoader systemResourceLoader = systemResourceLoaders.get(systemResourcePath);
         if (systemResourceLoader == null) {
             systemResourceLoader = createResourceLoader(systemResourcePath);
@@ -406,7 +423,7 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner implements Rob
         return systemResourceLoader;
     }
 
-    private ResourceLoader getAppResourceLoader(ResourceLoader systemResourceLoader, final AndroidManifest appManifest) {
+    public static ResourceLoader getAppResourceLoader(ResourceLoader systemResourceLoader, final AndroidManifest appManifest) {
         ResourceLoader resourceLoader = resourceLoadersByAppManifest.get(appManifest);
         if (resourceLoader == null) {
             resourceLoader = createAppResourceLoader(systemResourceLoader, appManifest);
@@ -416,7 +433,7 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner implements Rob
     }
 
     // this method must live on a InstrumentingClassLoader-loaded class, so it can't be on RobolectricContext
-    protected ResourceLoader createAppResourceLoader(ResourceLoader systemResourceLoader, AndroidManifest appManifest) {
+    protected static ResourceLoader createAppResourceLoader(ResourceLoader systemResourceLoader, AndroidManifest appManifest) {
         List<PackageResourceLoader> appAndLibraryResourceLoaders = new ArrayList<PackageResourceLoader>();
         for (ResourcePath resourcePath : appManifest.getIncludedResourcePaths()) {
             appAndLibraryResourceLoaders.add(new PackageResourceLoader(resourcePath));
@@ -429,7 +446,7 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner implements Rob
         return new RoutingResourceLoader(resourceLoaders);
     }
 
-    protected PackageResourceLoader createResourceLoader(ResourcePath systemResourcePath) {
+    public static PackageResourceLoader createResourceLoader(ResourcePath systemResourcePath) {
         return new PackageResourceLoader(systemResourcePath);
     }
 
@@ -450,5 +467,15 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner implements Rob
 	    	}
     	}
     	return dbMap;
+    }
+
+    private class HelperTestRunner extends BlockJUnit4ClassRunner {
+        public HelperTestRunner() throws InitializationError {
+            super(bootstrappedTestClass);
+        }
+
+        @Override protected Statement methodBlock(FrameworkMethod method) {
+            return super.methodBlock(method);
+        }
     }
 }

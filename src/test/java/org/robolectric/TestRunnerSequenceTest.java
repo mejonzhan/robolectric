@@ -30,21 +30,27 @@ public class TestRunnerSequenceTest {
             }));
         }
 
-        @Override public void beforeTest(Method method) {
-            transcript.add("beforeTest");
+        @Override protected Class<? extends TestLifecycle> getTestLifecycleClass() {
+            return MyTestLifecycle.class;
         }
 
-        @Override protected void resetStaticState() {
-            transcript.add("resetStaticState");
-        }
+        private class MyTestLifecycle extends TestLifecycle {
+            @Override public void beforeTest(Method method) {
+                transcript.add("beforeTest");
+            }
 
-        @Override protected void configureShadows(Method testMethod) {
-            transcript.add("configureShadows");
-        }
+            @Override protected void resetStaticState() {
+                transcript.add("resetStaticState");
+            }
 
-        @Override
-        public void setupApplicationState(Method testMethod) {
-            transcript.add("setupApplicationState");
+            @Override protected void configureShadows(Method testMethod) {
+                transcript.add("configureShadows");
+            }
+
+            @Override
+            public void setupApplicationState(Method testMethod) {
+                transcript.add("setupApplicationState");
+            }
         }
     }
 }

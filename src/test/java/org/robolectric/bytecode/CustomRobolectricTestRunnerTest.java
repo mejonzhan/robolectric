@@ -53,20 +53,26 @@ public class CustomRobolectricTestRunnerTest {
             super(testClass);
         }
 
-        @Override public void prepareTest(Object test) {
-            ((CustomRobolectricTestRunnerTest) test).preparedTest = test;
+        @Override protected Class<? extends TestLifecycle> getTestLifecycleClass() {
+            return MyTestLifecycle.class;
         }
 
-        @Override public void beforeTest(Method method) {
-            testMethod = method;
-        }
+        private class MyTestLifecycle extends TestLifecycle {
+            @Override public void prepareTest(Object test) {
+                ((CustomRobolectricTestRunnerTest) test).preparedTest = test;
+            }
 
-        @Override public void afterTest(Method method) {
-            afterTestCallCount++;
-        }
+            @Override public void beforeTest(Method method) {
+                testMethod = method;
+            }
 
-        @Override protected Application createApplication() {
-            return new CustomApplication();
+            @Override public void afterTest(Method method) {
+                afterTestCallCount++;
+            }
+
+            @Override protected Application createApplication() {
+                return new CustomApplication();
+            }
         }
     }
 

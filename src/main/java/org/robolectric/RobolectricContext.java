@@ -12,20 +12,16 @@ import org.robolectric.bytecode.RobolectricInternals;
 import org.robolectric.bytecode.Setup;
 import org.robolectric.bytecode.ShadowWrangler;
 import org.robolectric.bytecode.ZipClassCache;
-import org.robolectric.internal.RobolectricTestRunnerInterface;
 import org.robolectric.res.AndroidSdkFinder;
 import org.robolectric.res.ResourcePath;
 
 import java.io.File;
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.Map;
-
-import static org.robolectric.RobolectricTestRunner.isBootstrapped;
 
 public class RobolectricContext {
     private static final Map<Class<? extends RobolectricTestRunner>, RobolectricContext> contextsByTestRunner = new HashMap<Class<? extends RobolectricTestRunner>, RobolectricContext>();
@@ -41,10 +37,10 @@ public class RobolectricContext {
     }
 
     public static Class<?> bootstrap(Class<? extends RobolectricTestRunner> robolectricTestRunnerClass, Class<?> testClass, Factory factory) {
-        if (isBootstrapped(robolectricTestRunnerClass) || isBootstrapped(testClass)) {
-            if (!isBootstrapped(testClass)) throw new IllegalStateException("test class is somehow not bootstrapped");
-            return testClass;
-        }
+//        if (isBootstrapped(robolectricTestRunnerClass) || isBootstrapped(testClass)) {
+//            if (!isBootstrapped(testClass)) throw new IllegalStateException("test class is somehow not bootstrapped");
+//            return testClass;
+//        }
 
         RobolectricContext robolectricContext;
         synchronized (contextsByTestRunner) {
@@ -61,7 +57,8 @@ public class RobolectricContext {
 
         mostRecentRobolectricContext = robolectricContext;
 
-        return robolectricContext.bootstrapTestClass(testClass);
+//        return robolectricContext.bootstrapTestClass(testClass);
+        return testClass;
     }
 
     public RobolectricContext() {
@@ -111,41 +108,10 @@ public class RobolectricContext {
         return systemResourcePath;
     }
 
-    private Class<?> bootstrapTestClass(Class<?> testClass) {
+    public Class<?> bootstrapTestClass(Class<?> testClass) {
         try {
             return robolectricClassLoader.loadClass(testClass.getName());
         } catch (ClassNotFoundException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public RobolectricTestRunnerInterface getBootstrappedTestRunner(RobolectricTestRunnerInterface originalTestRunner) {
-        Class<?> originalTestClass = originalTestRunner.getTestClass().getJavaClass();
-        Class<?> bootstrappedTestClass = bootstrapTestClass(originalTestClass);
-        Class<?> bootstrappedTestRunnerClass = bootstrapTestClass(originalTestRunner.getClass());
-
-        try {
-            Constructor<?> constructorForDelegate = bootstrappedTestRunnerClass.getConstructor(Class.class);
-            return (RobolectricTestRunnerInterface) constructorForDelegate.newInstance(bootstrappedTestClass);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    private void setRobolectricContextField(Class<?> testRunnerClass) {
-        Class<?> clazz = testRunnerClass;
-        while (!clazz.getName().equals(RobolectricTestRunner.class.getName())) {
-            clazz = clazz.getSuperclass();
-            if (clazz == null)
-                throw new RuntimeException(testRunnerClass + " doesn't extend RobolectricTestRunner");
-        }
-        try {
-            Field field = clazz.getDeclaredField("sharedRobolectricContext");
-            field.setAccessible(true);
-            field.set(null, this);
-        } catch (NoSuchFieldException e) {
-            throw new RuntimeException(e);
-        } catch (IllegalAccessException e) {
             throw new RuntimeException(e);
         }
     }

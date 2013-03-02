@@ -51,13 +51,19 @@ public class TestRunners {
             }));
         }
 
-        @Override protected void configureShadows(Method testMethod) {
-            // Don't do any class binding, because that's what we're trying to test here.
+        @Override protected Class<? extends TestLifecycle> getTestLifecycleClass() {
+            return MyTestLifecycle.class;
         }
 
-        @Override
-        public void setupApplicationState(Method testMethod) {
-            // Don't do any resource loading or app init, because that's what we're trying to test here.
+        private static class MyTestLifecycle extends TestLifecycle {
+            @Override protected void configureShadows(Method testMethod) {
+                // Don't do any class binding, because that's what we're trying to test here.
+            }
+
+            @Override
+            public void setupApplicationState(Method testMethod) {
+                // Don't do any resource loading or app init, because that's what we're trying to test here.
+            }
         }
     }
 
@@ -121,21 +127,25 @@ public class TestRunners {
                     };
                 }
             }));
-
-
         }
 
-        @Override
-        protected void resetStaticState() {
+        @Override protected Class<? extends TestLifecycle> getTestLifecycleClass() {
+            return MyTestLifecycle.class;
         }
 
-        @Override protected void configureShadows(Method testMethod) {
-            // Don't do any class binding, because that's what we're trying to test here.
-        }
+        private class MyTestLifecycle extends TestLifecycle {
+            @Override
+            protected void resetStaticState() {
+            }
 
-        @Override
-        public void setupApplicationState(Method testMethod) {
-            // Don't do any resource loading or app init, because that's what we're trying to test here.
+            @Override protected void configureShadows(Method testMethod) {
+                // Don't do any class binding, because that's what we're trying to test here.
+            }
+
+            @Override
+            public void setupApplicationState(Method testMethod) {
+                // Don't do any resource loading or app init, because that's what we're trying to test here.
+            }
         }
     }
 }
