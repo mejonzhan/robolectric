@@ -57,7 +57,7 @@ public class CustomRobolectricTestRunnerTest {
             return MyTestLifecycle.class;
         }
 
-        private class MyTestLifecycle extends TestLifecycle {
+        public static class MyTestLifecycle extends TestLifecycle {
             @Override public void prepareTest(Object test) {
                 ((CustomRobolectricTestRunnerTest) test).preparedTest = test;
             }

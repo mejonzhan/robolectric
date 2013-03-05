@@ -34,7 +34,7 @@ public class TestRunnerSequenceTest {
             return MyTestLifecycle.class;
         }
 
-        private class MyTestLifecycle extends TestLifecycle {
+        public static class MyTestLifecycle extends TestLifecycle {
             @Override public void beforeTest(Method method) {
                 transcript.add("beforeTest");
             }

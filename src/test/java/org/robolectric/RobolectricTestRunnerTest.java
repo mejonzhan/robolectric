@@ -99,7 +99,7 @@ public class RobolectricTestRunnerTest {
             return MyTestLifecycle.class;
         }
 
-        private static class MyTestLifecycle extends TestLifecycle {
+        public static class MyTestLifecycle extends TestLifecycle {
             @Override protected Application createApplication() {
                 return new MyTestApplication();
             }

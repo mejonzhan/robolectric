@@ -55,7 +55,7 @@ public class TestRunners {
             return MyTestLifecycle.class;
         }
 
-        private static class MyTestLifecycle extends TestLifecycle {
+        public static class MyTestLifecycle extends TestLifecycle {
             @Override protected void configureShadows(Method testMethod) {
                 // Don't do any class binding, because that's what we're trying to test here.
             }
@@ -133,7 +133,7 @@ public class TestRunners {
             return MyTestLifecycle.class;
         }
 
-        private class MyTestLifecycle extends TestLifecycle {
+        public static class MyTestLifecycle extends TestLifecycle {
             @Override
             protected void resetStaticState() {
             }

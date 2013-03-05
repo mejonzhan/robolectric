@@ -42,6 +42,8 @@ public class RobolectricContext {
 //            return testClass;
 //        }
 
+        if (mostRecentRobolectricContext != null) return testClass;
+
         RobolectricContext robolectricContext;
         synchronized (contextsByTestRunner) {
             robolectricContext = contextsByTestRunner.get(robolectricTestRunnerClass);
