@@ -6,13 +6,9 @@ import org.robolectric.bytecode.ClassHandler;
 import org.robolectric.internal.RobolectricTestRunnerInterface;
 import org.robolectric.res.ResourceLoader;
 import org.robolectric.shadows.ShadowApplication;
-import org.robolectric.shadows.ShadowLog;
 import org.robolectric.shadows.ShadowResources;
 import org.robolectric.util.DatabaseConfig;
 
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.PrintStream;
 import java.lang.reflect.Method;
 
 import static org.robolectric.Robolectric.shadowOf;
@@ -28,9 +24,6 @@ public class DefaultTestLifecycle implements RobolectricTestRunnerInterface {
                      * Called before each test method is run. Sets up the simulation of the Android runtime environment.
                      */
     @Override final public void internalBeforeTest(final Method method, DatabaseConfig.DatabaseMap databaseMap) {
-        setupLogging();
-        configureShadows(method);
-
         resetStaticState();
 
         DatabaseConfig.setDatabaseMap(databaseMap); //Set static DatabaseMap in DBConfig
@@ -83,11 +76,6 @@ public class DefaultTestLifecycle implements RobolectricTestRunnerInterface {
         shadowOf(Robolectric.application.getResources().getConfiguration()).overrideQualifiers(qualifiers);
     }
 
-    protected void configureShadows(Method testMethod) { // todo: dedupe this/bindShadowClasses
-        Robolectric.bindDefaultShadowClasses();
-        bindShadowClasses(testMethod);
-    }
-
     /**
      * Override this method to bind your own shadow classes
      */
@@ -119,30 +107,5 @@ public class DefaultTestLifecycle implements RobolectricTestRunnerInterface {
      */
     protected Application createApplication() {
         return new ApplicationResolver(robolectricContext.getAppManifest()).resolveApplication();
-    }
-
-    private void setupLogging() {
-        String logging = System.getProperty("robolectric.logging");
-        if (logging != null && ShadowLog.stream == null) {
-            PrintStream stream = null;
-            if ("stdout".equalsIgnoreCase(logging)) {
-                stream = System.out;
-            } else if ("stderr".equalsIgnoreCase(logging)) {
-                stream = System.err;
-            } else {
-                try {
-                    final PrintStream file = new PrintStream(new FileOutputStream(logging));
-                    stream = file;
-                    Runtime.getRuntime().addShutdownHook(new Thread() {
-                        @Override public void run() {
-                            try { file.close(); } catch (Exception ignored) { }
-                        }
-                    });
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-            ShadowLog.stream = stream;
-        }
     }
 }

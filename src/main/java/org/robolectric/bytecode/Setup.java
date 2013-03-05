@@ -2,10 +2,7 @@ package org.robolectric.bytecode;
 
 import android.R;
 import android.net.Uri__FromAndroid;
-import org.robolectric.AndroidManifest;
-import org.robolectric.HelperTestRunner;
-import org.robolectric.RobolectricContext;
-import org.robolectric.RobolectricTestRunner;
+import org.robolectric.*;
 import org.robolectric.annotation.DisableStrictI18n;
 import org.robolectric.annotation.EnableStrictI18n;
 import org.robolectric.annotation.Values;
@@ -23,6 +20,7 @@ import static java.util.Arrays.asList;
 
 public class Setup {
     public static final List<String> CLASSES_TO_ALWAYS_DELEGATE = stringify(
+            RobolectricBase.class,
             Uri__FromAndroid.class,
             RobolectricTestRunnerInterface.class,
             RealObject.class,

@@ -7,12 +7,18 @@ import org.junit.runners.model.InitializationError;
 import org.junit.runners.model.Statement;
 import org.robolectric.annotation.*;
 import org.robolectric.bytecode.InstrumentingClassLoader;
+import org.robolectric.bytecode.ShadowMap;
+import org.robolectric.bytecode.ShadowWrangler;
 import org.robolectric.internal.RobolectricTestRunnerInterface;
 import org.robolectric.res.*;
+import org.robolectric.shadows.ShadowLog;
 import org.robolectric.util.DatabaseConfig.DatabaseMap;
 import org.robolectric.util.DatabaseConfig.UsingDatabaseMap;
 import org.robolectric.util.SQLiteMap;
 
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.PrintStream;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -27,6 +33,8 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner {
     private static final Map<Class<? extends RobolectricTestRunner>, RobolectricContext> contextsByTestRunner = new WeakHashMap<Class<? extends RobolectricTestRunner>, RobolectricContext>();
     private static final Map<AndroidManifest, ResourceLoader> resourceLoadersByAppManifest = new HashMap<AndroidManifest, ResourceLoader>();
     private static final Map<ResourcePath, ResourceLoader> systemResourceLoaders = new HashMap<ResourcePath, ResourceLoader>();
+
+    private static ShadowMap shadowMap;
 
     private RobolectricContext robolectricContext;
     private DatabaseMap databaseMap;
@@ -117,6 +125,10 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner {
         } catch (InitializationError initializationError) {
             throw new RuntimeException(initializationError);
         }
+
+        setupLogging();
+        ShadowMap shadowMap = createShadowMap();
+        ((ShadowWrangler) robolectricContext.getClassHandler()).setShadowMap(shadowMap);
 
         try {
         testLifecycle.internalBeforeTest(method.getMethod(), databaseMap);
@@ -364,5 +376,41 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner {
 	    	}
     	}
     	return dbMap;
+    }
+
+    private synchronized ShadowMap createShadowMap() {
+        if (shadowMap != null) return shadowMap;
+
+        shadowMap = new ShadowMap();
+        for (Class<?> shadowClass : RobolectricBase.DEFAULT_SHADOW_CLASSES) {
+            shadowMap.addShadowClass(shadowClass);
+        }
+        return shadowMap;
+    }
+
+
+    private void setupLogging() {
+        String logging = System.getProperty("robolectric.logging");
+        if (logging != null && ShadowLog.stream == null) {
+            PrintStream stream = null;
+            if ("stdout".equalsIgnoreCase(logging)) {
+                stream = System.out;
+            } else if ("stderr".equalsIgnoreCase(logging)) {
+                stream = System.err;
+            } else {
+                try {
+                    final PrintStream file = new PrintStream(new FileOutputStream(logging));
+                    stream = file;
+                    Runtime.getRuntime().addShutdownHook(new Thread() {
+                        @Override public void run() {
+                            try { file.close(); } catch (Exception ignored) { }
+                        }
+                    });
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+            ShadowLog.stream = stream;
+        }
     }
 }
