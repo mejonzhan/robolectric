@@ -3,7 +3,9 @@ package org.robolectric.bytecode;
 import android.R;
 import android.net.Uri__FromAndroid;
 import org.robolectric.AndroidManifest;
+import org.robolectric.HelperTestRunner;
 import org.robolectric.RobolectricContext;
+import org.robolectric.RobolectricTestRunner;
 import org.robolectric.annotation.DisableStrictI18n;
 import org.robolectric.annotation.EnableStrictI18n;
 import org.robolectric.annotation.Values;
@@ -15,14 +17,7 @@ import org.robolectric.res.ResourcePath;
 import org.robolectric.util.DatabaseConfig;
 import org.robolectric.util.I18nException;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 import static java.util.Arrays.asList;
 
@@ -41,6 +36,8 @@ public class Setup {
             org.robolectric.bytecode.JavassistInstrumentingClassLoader.class,
             org.robolectric.bytecode.AsmInstrumentingClassLoader.class,
             RobolectricContext.class,
+            RobolectricTestRunner.class,
+            HelperTestRunner.class,
             ResourcePath.class,
             AndroidTranslator.class,
             ClassHandler.class,

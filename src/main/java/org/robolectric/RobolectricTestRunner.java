@@ -16,10 +16,7 @@ import org.robolectric.util.SQLiteMap;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Installs a {@link org.robolectric.bytecode.InstrumentingClassLoader} and
@@ -27,14 +24,12 @@ import java.util.Map;
  * provide a simulation of the Android runtime environment.
  */
 public class RobolectricTestRunner extends BlockJUnit4ClassRunner {
-    private static final Map<Class<? extends RobolectricTestRunner>, RobolectricContext> contextsByTestRunner = new HashMap<Class<? extends RobolectricTestRunner>, RobolectricContext>();
+    private static final Map<Class<? extends RobolectricTestRunner>, RobolectricContext> contextsByTestRunner = new WeakHashMap<Class<? extends RobolectricTestRunner>, RobolectricContext>();
     private static final Map<AndroidManifest, ResourceLoader> resourceLoadersByAppManifest = new HashMap<AndroidManifest, ResourceLoader>();
     private static final Map<ResourcePath, ResourceLoader> systemResourceLoaders = new HashMap<ResourcePath, ResourceLoader>();
 
     private RobolectricContext robolectricContext;
     private DatabaseMap databaseMap;
-    private Class<?> bootstrappedTestClass;
-    private HelperTestRunner helperTestRunner;
     private RobolectricTestRunnerInterface testLifecycle;
 
     /**
@@ -66,8 +61,6 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner {
         this.robolectricContext = robolectricContext;
 
 
-        bootstrappedTestClass = robolectricContext.bootstrapTestClass(getTestClass().getJavaClass());
-        helperTestRunner = new HelperTestRunner();
         try {
             testLifecycle = (RobolectricTestRunnerInterface) robolectricContext.getRobolectricClassLoader().loadClass(getTestLifecycleClass().getName()).newInstance();
             testLifecycle.init(robolectricContext);
@@ -116,7 +109,16 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner {
 
     @Override protected Statement methodBlock(final FrameworkMethod method) {
         robolectricContext.getClassHandler().reset();
-      try {
+
+        Class bootstrappedTestClass = robolectricContext.bootstrapTestClass(getTestClass().getJavaClass());
+        HelperTestRunner helperTestRunner;
+        try {
+            helperTestRunner = new HelperTestRunner(bootstrappedTestClass);
+        } catch (InitializationError initializationError) {
+            throw new RuntimeException(initializationError);
+        }
+
+        try {
         testLifecycle.internalBeforeTest(method.getMethod(), databaseMap);
       } catch (Exception e) {
         e.printStackTrace();
@@ -155,11 +157,10 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner {
 
 
     private void afterClass() {
+        System.out.println("after class!");
         testLifecycle = null;
         robolectricContext = null;
         databaseMap = null;
-        bootstrappedTestClass = null;
-        helperTestRunner = null;
     }
 
     /**
@@ -363,19 +364,5 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner {
 	    	}
     	}
     	return dbMap;
-    }
-
-    private class HelperTestRunner extends BlockJUnit4ClassRunner {
-        public HelperTestRunner() throws InitializationError {
-            super(bootstrappedTestClass);
-        }
-
-        @Override protected Statement classBlock(RunNotifier notifier) {
-            return super.classBlock(notifier);
-        }
-
-        @Override protected Statement methodBlock(FrameworkMethod method) {
-            return super.methodBlock(method);
-        }
     }
 }
