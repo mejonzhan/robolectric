@@ -41,7 +41,6 @@ public class Setup {
             org.robolectric.bytecode.JavassistInstrumentingClassLoader.class,
             org.robolectric.bytecode.AsmInstrumentingClassLoader.class,
             RobolectricContext.class,
-            RobolectricContext.Factory.class,
             ResourcePath.class,
             AndroidTranslator.class,
             ClassHandler.class,

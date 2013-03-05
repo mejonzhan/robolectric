@@ -95,11 +95,11 @@ public class RobolectricTestRunnerTest {
             androidManifest = getRobolectricContext().getAppManifest();
         }
 
-        @Override protected Class<? extends TestLifecycle> getTestLifecycleClass() {
+        @Override protected Class<? extends DefaultTestLifecycle> getTestLifecycleClass() {
             return MyTestLifecycle.class;
         }
 
-        public static class MyTestLifecycle extends TestLifecycle {
+        public static class MyTestLifecycle extends DefaultTestLifecycle {
             @Override protected Application createApplication() {
                 return new MyTestApplication();
             }

@@ -22,19 +22,14 @@ public class TestRunnerSequenceTest {
 
     public static class Runner extends RobolectricTestRunner {
         public Runner(Class<?> testClass) throws InitializationError {
-            super(RobolectricContext.bootstrap(Runner.class, testClass, new RobolectricContext.Factory() {
-                @Override
-                public RobolectricContext create() {
-                    return new RobolectricContext();
-                }
-            }));
+            super(testClass);
         }
 
-        @Override protected Class<? extends TestLifecycle> getTestLifecycleClass() {
+        @Override protected Class<? extends DefaultTestLifecycle> getTestLifecycleClass() {
             return MyTestLifecycle.class;
         }
 
-        public static class MyTestLifecycle extends TestLifecycle {
+        public static class MyTestLifecycle extends DefaultTestLifecycle {
             @Override public void beforeTest(Method method) {
                 transcript.add("beforeTest");
             }

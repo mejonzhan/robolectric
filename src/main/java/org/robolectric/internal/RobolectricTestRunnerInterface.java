@@ -6,7 +6,7 @@ import org.robolectric.util.DatabaseConfig;
 import java.lang.reflect.Method;
 
 public interface RobolectricTestRunnerInterface {
-    void init(Class<?> bootstrappedTestClass, RobolectricContext robolectricContext);
+    void init(RobolectricContext robolectricContext);
 
     void internalBeforeTest(Method method, DatabaseConfig.DatabaseMap databaseMap1);
 

@@ -3,15 +3,7 @@ package org.robolectric;
 import org.apache.maven.artifact.ant.DependenciesTask;
 import org.apache.maven.model.Dependency;
 import org.apache.tools.ant.Project;
-import org.robolectric.bytecode.AndroidTranslator;
-import org.robolectric.bytecode.AsmInstrumentingClassLoader;
-import org.robolectric.bytecode.ClassCache;
-import org.robolectric.bytecode.ClassHandler;
-import org.robolectric.bytecode.JavassistInstrumentingClassLoader;
-import org.robolectric.bytecode.RobolectricInternals;
-import org.robolectric.bytecode.Setup;
-import org.robolectric.bytecode.ShadowWrangler;
-import org.robolectric.bytecode.ZipClassCache;
+import org.robolectric.bytecode.*;
 import org.robolectric.res.AndroidSdkFinder;
 import org.robolectric.res.ResourcePath;
 
@@ -19,49 +11,13 @@ import java.io.File;
 import java.lang.reflect.Field;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.HashMap;
 import java.util.Hashtable;
-import java.util.Map;
 
 public class RobolectricContext {
-    private static final Map<Class<? extends RobolectricTestRunner>, RobolectricContext> contextsByTestRunner = new HashMap<Class<? extends RobolectricTestRunner>, RobolectricContext>();
-
     private final AndroidManifest appManifest;
     private final ClassLoader robolectricClassLoader;
     private final ClassHandler classHandler;
     private ResourcePath systemResourcePath;
-    public static RobolectricContext mostRecentRobolectricContext; // ick, race condition
-
-    public interface Factory {
-        RobolectricContext create();
-    }
-
-    public static Class<?> bootstrap(Class<? extends RobolectricTestRunner> robolectricTestRunnerClass, Class<?> testClass, Factory factory) {
-//        if (isBootstrapped(robolectricTestRunnerClass) || isBootstrapped(testClass)) {
-//            if (!isBootstrapped(testClass)) throw new IllegalStateException("test class is somehow not bootstrapped");
-//            return testClass;
-//        }
-
-        if (mostRecentRobolectricContext != null) return testClass;
-
-        RobolectricContext robolectricContext;
-        synchronized (contextsByTestRunner) {
-            robolectricContext = contextsByTestRunner.get(robolectricTestRunnerClass);
-            if (robolectricContext == null) {
-                try {
-                    robolectricContext = factory.create();
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                }
-                contextsByTestRunner.put(robolectricTestRunnerClass, robolectricContext);
-            }
-        }
-
-        mostRecentRobolectricContext = robolectricContext;
-
-//        return robolectricContext.bootstrapTestClass(testClass);
-        return testClass;
-    }
 
     public RobolectricContext() {
         Setup setup = createSetup();

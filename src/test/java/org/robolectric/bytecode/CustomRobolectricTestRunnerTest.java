@@ -6,6 +6,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.model.InitializationError;
+import org.robolectric.DefaultTestLifecycle;
 import org.robolectric.Robolectric;
 import org.robolectric.TestRunners;
 
@@ -53,11 +54,11 @@ public class CustomRobolectricTestRunnerTest {
             super(testClass);
         }
 
-        @Override protected Class<? extends TestLifecycle> getTestLifecycleClass() {
+        @Override protected Class<? extends DefaultTestLifecycle> getTestLifecycleClass() {
             return MyTestLifecycle.class;
         }
 
-        public static class MyTestLifecycle extends TestLifecycle {
+        public static class MyTestLifecycle extends DefaultTestLifecycle {
             @Override public void prepareTest(Object test) {
                 ((CustomRobolectricTestRunnerTest) test).preparedTest = test;
             }
