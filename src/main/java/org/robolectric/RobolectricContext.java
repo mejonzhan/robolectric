@@ -15,7 +15,7 @@ import java.util.Hashtable;
 
 public class RobolectricContext {
     private final AndroidManifest appManifest;
-    private final ClassLoader robolectricClassLoader;
+    private static ClassLoader robolectricClassLoader;
     private final ClassHandler classHandler;
     private ResourcePath systemResourcePath;
 
@@ -23,7 +23,7 @@ public class RobolectricContext {
         Setup setup = createSetup();
         classHandler = createClassHandler(setup);
         appManifest = createAppManifest();
-        robolectricClassLoader = createRobolectricClassLoader(setup);
+        if (robolectricClassLoader == null) robolectricClassLoader = createRobolectricClassLoader(setup);
     }
 
     private ClassHandler createClassHandler(Setup setup) {
