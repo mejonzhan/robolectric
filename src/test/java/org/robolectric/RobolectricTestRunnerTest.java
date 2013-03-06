@@ -6,9 +6,10 @@ import android.widget.TextView;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.model.InitializationError;
+import org.robolectric.annotation.Config;
 import org.robolectric.annotation.DisableStrictI18n;
 import org.robolectric.annotation.EnableStrictI18n;
-import org.robolectric.annotation.Values;
+import org.robolectric.annotation.Config;
 
 import static org.junit.Assert.*;
 import static org.robolectric.Robolectric.shadowOf;
@@ -57,7 +58,7 @@ public class RobolectricTestRunnerTest {
     }
 
     @Test
-    @Values(qualifiers = "fr")
+    @Config(qualifiers = "fr")
     public void internalBeforeTest_testValuesResQualifiers() {
         assertEquals("fr", Robolectric.shadowOf(Robolectric.getShadowApplication().getResources().getConfiguration()).getQualifiers());
     }
@@ -100,7 +101,7 @@ public class RobolectricTestRunnerTest {
         }
 
         public static class MyTestLifecycle extends DefaultTestLifecycle {
-            @Override protected Application createApplication() {
+            @Override public Application createApplication() {
                 return new MyTestApplication();
             }
         }

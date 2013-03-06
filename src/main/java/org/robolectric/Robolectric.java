@@ -405,25 +405,6 @@ public class Robolectric {
         return RobolectricBase.DEFAULT_SHADOW_CLASSES;
     }
 
-    public static void resetStaticState() {
-        getShadowWrangler().silence();
-        Robolectric.application = null;
-        ShadowAccountManager.reset();
-        ShadowBitmapFactory.reset();
-        ShadowDrawable.reset();
-        ShadowMediaStore.reset();
-        ShadowLog.reset();
-        ShadowContext.clearFilesAndCache();
-        ShadowLooper.resetThreadLoopers();
-        ShadowDialog.reset();
-        ShadowContentResolver.reset();
-//        ShadowLocalBroadcastManager.reset();
-        ShadowMimeTypeMap.reset();
-        ShadowPowerManager.reset();
-        ShadowStatFs.reset();
-        ShadowTypeface.reset();
-    }
-
     public static <T> T directlyOn(T shadowedObject) {
         return RobolectricInternals.directlyOn(shadowedObject);
     }

@@ -71,7 +71,7 @@ public class CustomRobolectricTestRunnerTest {
                 afterTestCallCount++;
             }
 
-            @Override protected Application createApplication() {
+            @Override public Application createApplication() {
                 return new CustomApplication();
             }
         }

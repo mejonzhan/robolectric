@@ -3,6 +3,7 @@ package org.robolectric;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.model.InitializationError;
+import org.robolectric.bytecode.ShadowMap;
 import org.robolectric.util.Transcript;
 
 import java.lang.reflect.Method;
@@ -29,18 +30,19 @@ public class TestRunnerSequenceTest {
             return MyTestLifecycle.class;
         }
 
+        @Override protected synchronized ShadowMap createShadowMap() {
+            transcript.add("configureShadows");
+            return super.createShadowMap();
+        }
+
         public static class MyTestLifecycle extends DefaultTestLifecycle {
             @Override public void beforeTest(Method method) {
                 transcript.add("beforeTest");
             }
 
-            @Override protected void resetStaticState() {
-                transcript.add("resetStaticState");
-            }
-
-            @Override protected void configureShadows(Method testMethod) {
-                transcript.add("configureShadows");
-            }
+//            @Override protected void resetStaticState() {
+//                transcript.add("resetStaticState");
+//            }
 
             @Override
             public void setupApplicationState(Method testMethod) {

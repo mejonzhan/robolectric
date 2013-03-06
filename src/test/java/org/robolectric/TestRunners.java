@@ -1,9 +1,12 @@
 package org.robolectric;
 
 import org.junit.runners.model.InitializationError;
+import org.robolectric.annotation.Config;
 import org.robolectric.bytecode.AndroidTranslatorClassInstrumentedTest;
 import org.robolectric.bytecode.ClassInfo;
 import org.robolectric.bytecode.Setup;
+import org.robolectric.bytecode.ShadowMap;
+import org.robolectric.util.DatabaseConfig;
 
 import java.lang.reflect.Method;
 
@@ -46,19 +49,14 @@ public class TestRunners {
             super(testClass);
         }
 
-        @Override protected Class<? extends DefaultTestLifecycle> getTestLifecycleClass() {
-            return MyTestLifecycle.class;
+        @Override protected ShadowMap createShadowMap() {
+            // Don't do any class binding, because that's what we're trying to test here.
+            return ShadowMap.EMPTY;
         }
 
-        public static class MyTestLifecycle extends DefaultTestLifecycle {
-            @Override protected void configureShadows(Method testMethod) {
-                // Don't do any class binding, because that's what we're trying to test here.
-            }
-
-            @Override
-            public void setupApplicationState(Method testMethod) {
-                // Don't do any resource loading or app init, because that's what we're trying to test here.
-            }
+        @Override
+        public void internalBeforeTest(Method method, DatabaseConfig.DatabaseMap databaseMap, Config config) {
+            // Don't do any resource loading or app init, because that's what we're trying to test here.
         }
     }
 
@@ -124,23 +122,14 @@ public class TestRunners {
             };
         }
 
-        @Override protected Class<? extends DefaultTestLifecycle> getTestLifecycleClass() {
-            return MyTestLifecycle.class;
+        @Override protected ShadowMap createShadowMap() {
+            // Don't do any class binding, because that's what we're trying to test here.
+            return ShadowMap.EMPTY;
         }
 
-        public static class MyTestLifecycle extends DefaultTestLifecycle {
-            @Override
-            protected void resetStaticState() {
-            }
-
-            @Override protected void configureShadows(Method testMethod) {
-                // Don't do any class binding, because that's what we're trying to test here.
-            }
-
-            @Override
-            public void setupApplicationState(Method testMethod) {
-                // Don't do any resource loading or app init, because that's what we're trying to test here.
-            }
+        @Override
+        public void internalBeforeTest(Method method, DatabaseConfig.DatabaseMap databaseMap, Config config) {
+            // Don't do any resource loading or app init, because that's what we're trying to test here.
         }
     }
 }

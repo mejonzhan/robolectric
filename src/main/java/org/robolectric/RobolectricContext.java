@@ -3,7 +3,15 @@ package org.robolectric;
 import org.apache.maven.artifact.ant.DependenciesTask;
 import org.apache.maven.model.Dependency;
 import org.apache.tools.ant.Project;
-import org.robolectric.bytecode.*;
+import org.robolectric.bytecode.AndroidTranslator;
+import org.robolectric.bytecode.AsmInstrumentingClassLoader;
+import org.robolectric.bytecode.ClassCache;
+import org.robolectric.bytecode.ClassHandler;
+import org.robolectric.bytecode.JavassistInstrumentingClassLoader;
+import org.robolectric.bytecode.RobolectricInternals;
+import org.robolectric.bytecode.Setup;
+import org.robolectric.bytecode.ShadowWrangler;
+import org.robolectric.bytecode.ZipClassCache;
 import org.robolectric.res.AndroidSdkFinder;
 import org.robolectric.res.ResourcePath;
 
@@ -66,7 +74,7 @@ public class RobolectricContext {
         return systemResourcePath;
     }
 
-    public Class<?> bootstrapTestClass(Class<?> testClass) {
+    public Class<?> bootstrappedClass(Class<?> testClass) {
         try {
             return robolectricClassLoader.loadClass(testClass.getName());
         } catch (ClassNotFoundException e) {

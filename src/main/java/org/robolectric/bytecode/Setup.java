@@ -2,19 +2,31 @@ package org.robolectric.bytecode;
 
 import android.R;
 import android.net.Uri__FromAndroid;
-import org.robolectric.*;
+import org.robolectric.AndroidManifest;
+import org.robolectric.HelperTestRunner;
+import org.robolectric.RobolectricBase;
+import org.robolectric.RobolectricContext;
+import org.robolectric.RobolectricTestRunner;
 import org.robolectric.annotation.DisableStrictI18n;
 import org.robolectric.annotation.EnableStrictI18n;
-import org.robolectric.annotation.Values;
+import org.robolectric.annotation.Config;
 import org.robolectric.internal.DoNotInstrument;
+import org.robolectric.internal.HooksInterface;
 import org.robolectric.internal.Instrument;
 import org.robolectric.internal.RealObject;
-import org.robolectric.internal.RobolectricTestRunnerInterface;
+import org.robolectric.internal.TestLifecycle;
 import org.robolectric.res.ResourcePath;
 import org.robolectric.util.DatabaseConfig;
 import org.robolectric.util.I18nException;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import static java.util.Arrays.asList;
 
@@ -22,7 +34,7 @@ public class Setup {
     public static final List<String> CLASSES_TO_ALWAYS_DELEGATE = stringify(
             RobolectricBase.class,
             Uri__FromAndroid.class,
-            RobolectricTestRunnerInterface.class,
+            TestLifecycle.class,
             RealObject.class,
             ShadowWrangler.class,
             Vars.class,
@@ -41,11 +53,12 @@ public class Setup {
             ClassHandler.class,
             Instrument.class,
             DoNotInstrument.class,
-            Values.class,
+            Config.class,
             EnableStrictI18n.class,
             DisableStrictI18n.class,
             I18nException.class,
-            org.robolectric.bytecode.DirectObjectMarker.class
+            org.robolectric.bytecode.DirectObjectMarker.class,
+            HooksInterface.class
     );
 
     private static List<String> stringify(Class... classes) {

@@ -406,6 +406,13 @@ public class AsmInstrumentingClassLoader extends ClassLoader implements Opcodes,
 //            for (MethodNode method : (List<MethodNode>)classNode.methods) {
 //                System.out.println("method = " + method.name + method.desc);
 //            }
+
+            if (className.equals("android.os.Build$VERSION")) {
+                for (Object field : classNode.fields) {
+                    FieldNode fieldNode = (FieldNode) field;
+                    fieldNode.access &= ~(Modifier.FINAL);
+                }
+            }
         }
 
         private boolean isSyntheticAccessorMethod(MethodNode method) {

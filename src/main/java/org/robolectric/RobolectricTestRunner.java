@@ -1,17 +1,31 @@
 package org.robolectric;
 
+import android.os.Build;
 import org.junit.runner.notification.RunNotifier;
 import org.junit.runners.BlockJUnit4ClassRunner;
 import org.junit.runners.model.FrameworkMethod;
 import org.junit.runners.model.InitializationError;
 import org.junit.runners.model.Statement;
-import org.robolectric.annotation.*;
+import org.robolectric.annotation.Config;
+import org.robolectric.annotation.DisableStrictI18n;
+import org.robolectric.annotation.EnableStrictI18n;
+import org.robolectric.annotation.Config;
+import org.robolectric.annotation.WithConstantInt;
+import org.robolectric.annotation.WithConstantString;
+import org.robolectric.bytecode.ClassHandler;
 import org.robolectric.bytecode.InstrumentingClassLoader;
 import org.robolectric.bytecode.ShadowMap;
 import org.robolectric.bytecode.ShadowWrangler;
-import org.robolectric.internal.RobolectricTestRunnerInterface;
-import org.robolectric.res.*;
+import org.robolectric.internal.Hooks;
+import org.robolectric.internal.HooksInterface;
+import org.robolectric.internal.TestLifecycle;
+import org.robolectric.res.OverlayResourceLoader;
+import org.robolectric.res.PackageResourceLoader;
+import org.robolectric.res.ResourceLoader;
+import org.robolectric.res.ResourcePath;
+import org.robolectric.res.RoutingResourceLoader;
 import org.robolectric.shadows.ShadowLog;
+import org.robolectric.util.DatabaseConfig;
 import org.robolectric.util.DatabaseConfig.DatabaseMap;
 import org.robolectric.util.DatabaseConfig.UsingDatabaseMap;
 import org.robolectric.util.SQLiteMap;
@@ -22,7 +36,14 @@ import java.io.PrintStream;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.WeakHashMap;
+
+import static org.fest.reflect.core.Reflection.staticField;
+import static org.robolectric.Robolectric.shadowOf;
 
 /**
  * Installs a {@link org.robolectric.bytecode.InstrumentingClassLoader} and
@@ -34,11 +55,11 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner {
     private static final Map<AndroidManifest, ResourceLoader> resourceLoadersByAppManifest = new HashMap<AndroidManifest, ResourceLoader>();
     private static final Map<ResourcePath, ResourceLoader> systemResourceLoaders = new HashMap<ResourcePath, ResourceLoader>();
 
-    private static ShadowMap shadowMap;
+    private static ShadowMap mainShadowMap;
 
     private RobolectricContext robolectricContext;
     private DatabaseMap databaseMap;
-    private RobolectricTestRunnerInterface testLifecycle;
+    private TestLifecycle testLifecycle;
 
     /**
      * Creates a runner to run {@code testClass}. Looks in your working directory for your AndroidManifest.xml file
@@ -57,20 +78,17 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner {
             if (robolectricContext == null) {
                 try {
                     robolectricContext = createRobolectricContext();
-                    System.out.println("Created " + robolectricContext + " for " + testRunnerClass);
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
                 contextsByTestRunner.put(testRunnerClass, robolectricContext);
-            } else {
-                System.out.println("Used " + robolectricContext + " for " + testRunnerClass);
             }
         }
         this.robolectricContext = robolectricContext;
 
 
         try {
-            testLifecycle = (RobolectricTestRunnerInterface) robolectricContext.getRobolectricClassLoader().loadClass(getTestLifecycleClass().getName()).newInstance();
+            testLifecycle = (TestLifecycle) robolectricContext.getRobolectricClassLoader().loadClass(getTestLifecycleClass().getName()).newInstance();
             testLifecycle.init(robolectricContext);
         } catch (InstantiationException e) {
             throw new RuntimeException(e);
@@ -118,7 +136,7 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner {
     @Override protected Statement methodBlock(final FrameworkMethod method) {
         robolectricContext.getClassHandler().reset();
 
-        Class bootstrappedTestClass = robolectricContext.bootstrapTestClass(getTestClass().getJavaClass());
+        Class bootstrappedTestClass = robolectricContext.bootstrappedClass(getTestClass().getJavaClass());
         HelperTestRunner helperTestRunner;
         try {
             helperTestRunner = new HelperTestRunner(bootstrappedTestClass);
@@ -127,18 +145,20 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner {
         }
 
         setupLogging();
-        ShadowMap shadowMap = createShadowMap();
-        ((ShadowWrangler) robolectricContext.getClassHandler()).setShadowMap(shadowMap);
+
+        Config config = method.getMethod().getAnnotation(Config.class);
+        configureShadows(config);
 
         try {
-        testLifecycle.internalBeforeTest(method.getMethod(), databaseMap);
-      } catch (Exception e) {
-        e.printStackTrace();
-        throw new RuntimeException(e);
-      }
+            internalBeforeTest(method.getMethod(), databaseMap, config);
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new RuntimeException(e);
+        }
 
         Method bootstrappedMethod;
         try {
+            //noinspection unchecked
             bootstrappedMethod = bootstrappedTestClass.getMethod(method.getName());
         } catch (NoSuchMethodException e) {
             throw new RuntimeException(e);
@@ -148,23 +168,84 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner {
             @Override public void evaluate() throws Throwable {
                 Map<Field, Object> withConstantAnnos = getWithConstantAnnotations(method.getMethod());
 
-            	// todo: this try/finally probably isn't right -- should mimic RunAfters? [xw]
+                // todo: this try/finally probably isn't right -- should mimic RunAfters? [xw]
                 try {
-                	if (withConstantAnnos.isEmpty()) {
-                		statement.evaluate();
-                	}
-                	else {
-                		synchronized(this) {
-	                		setupConstants(withConstantAnnos);
-	                		statement.evaluate();
-	                		setupConstants(withConstantAnnos);
-                		}
-                	}
+                    if (withConstantAnnos.isEmpty()) {
+                        statement.evaluate();
+                    } else {
+                        synchronized (this) {
+                            setupConstants(withConstantAnnos);
+                            statement.evaluate();
+                            setupConstants(withConstantAnnos);
+                        }
+                    }
                 } finally {
-                    testLifecycle.internalAfterTest(method.getMethod());
+                    internalAfterTest(method.getMethod());
                 }
             }
         };
+    }
+
+    private void configureShadows(Config config) {
+        ShadowMap shadowMap = createShadowMap();
+
+        if (config != null) {
+            Class<?>[] shadows = config.shadows();
+            if (shadows.length > 0) {
+                shadowMap = new ShadowMap.Builder(shadowMap)
+                        .addShadowClasses(shadows)
+                        .build();
+            }
+        }
+
+        ((ShadowWrangler) robolectricContext.getClassHandler()).setShadowMap(shadowMap);
+    }
+
+    /*
+     * Called before each test method is run. Sets up the simulation of the Android runtime environment.
+     */
+    public void internalBeforeTest(final Method method, DatabaseConfig.DatabaseMap databaseMap, Config config) {
+        HooksInterface hooksInterface = getHooksInterface();
+        hooksInterface.resetStaticState();
+        hooksInterface.setDatabaseMap(databaseMap); //Set static DatabaseMap in DBConfig
+
+        boolean strictI18n = RobolectricTestRunner.determineI18nStrictState(method);
+        ClassHandler classHandler = robolectricContext.getClassHandler();
+        classHandler.setStrictI18n(strictI18n);
+
+        AndroidManifest appManifest = robolectricContext.getAppManifest();
+        int sdkVersion = appManifest.getTargetSdkVersion();
+        if (config != null && config.reportSdk() != -1) {
+            sdkVersion = config.reportSdk();
+        }
+
+        Class<?> versionClass = robolectricContext.bootstrappedClass(Build.VERSION.class);
+        staticField("SDK_INT").ofType(int.class).in(versionClass).set(sdkVersion);
+
+        hooksInterface.setupApplicationState(method, testLifecycle, robolectricContext);
+        if (Robolectric.application != null) {
+            shadowOf(Robolectric.application).setStrictI18n(strictI18n);
+        }
+
+        testLifecycle.beforeTest(method);
+    }
+
+    private HooksInterface getHooksInterface() {
+        try {
+            @SuppressWarnings("unchecked")
+            Class<HooksInterface> aClass = (Class<HooksInterface>) robolectricContext.getRobolectricClassLoader().loadClass(Hooks.class.getName());
+            return aClass.newInstance();
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException(e);
+        } catch (InstantiationException e) {
+            throw new RuntimeException(e);
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void internalAfterTest(final Method method) {
+        testLifecycle.afterTest(method);
     }
 
 
@@ -189,9 +270,9 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner {
 
     public static String determineResourceQualifiers(Method method) {
         String qualifiers = "";
-        Values values = method.getAnnotation(Values.class);
-        if (values != null) {
-            qualifiers = values.qualifiers();
+        Config config = method.getAnnotation(Config.class);
+        if (config != null) {
+            qualifiers = config.qualifiers();
         }
         return qualifiers;
     }
@@ -208,17 +289,16 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner {
      * {@link org.robolectric.annotation.EnableStrictI18n} or
      * {@link org.robolectric.annotation.DisableStrictI18n}.
      * <p/>
-     *
+     * <p/>
      * By default, I18n-strict mode is disabled.
      *
      * @param method
-     *
      */
     public static boolean determineI18nStrictState(Method method) {
-    	// Global
-    	boolean strictI18n = globalI18nStrictEnabled();
+        // Global
+        boolean strictI18n = globalI18nStrictEnabled();
 
-    	// Test case class
+        // Test case class
         Class<?> testClass = method.getDeclaringClass();
         if (testClass.getAnnotation(EnableStrictI18n.class) != null) {
             strictI18n = true;
@@ -226,14 +306,14 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner {
             strictI18n = false;
         }
 
-    	// Test case method
+        // Test case method
         if (method.getAnnotation(EnableStrictI18n.class) != null) {
             strictI18n = true;
         } else if (method.getAnnotation(DisableStrictI18n.class) != null) {
             strictI18n = false;
         }
 
-		return strictI18n;
+        return strictI18n;
     }
 
     /**
@@ -248,19 +328,19 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner {
      * @return
      */
     protected static boolean globalI18nStrictEnabled() {
-    	return Boolean.valueOf(System.getProperty("robolectric.strictI18n"));
+        return Boolean.valueOf(System.getProperty("robolectric.strictI18n"));
     }
 
     /**
-	 * Find all the class and method annotations and pass them to
-	 * addConstantFromAnnotation() for evaluation.
-	 *
-	 * TODO: Add compound annotations to support defining more than one int and string at a time
-	 * TODO: See http://stackoverflow.com/questions/1554112/multiple-annotations-of-the-same-type-on-one-element
-	 *
-	 * @param method
-	 * @return
-	 */
+     * Find all the class and method annotations and pass them to
+     * addConstantFromAnnotation() for evaluation.
+     * <p/>
+     * TODO: Add compound annotations to support defining more than one int and string at a time
+     * TODO: See http://stackoverflow.com/questions/1554112/multiple-annotations-of-the-same-type-on-one-element
+     *
+     * @param method
+     * @return
+     */
     private Map<Field, Object> getWithConstantAnnotations(Method method) {
         Map<Field, Object> constants = new HashMap<Field, Object>();
 
@@ -282,24 +362,22 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner {
      * @param constants
      * @param anno
      */
-    private void addConstantFromAnnotation(Map<Field,Object> constants, Annotation anno) {
+    private void addConstantFromAnnotation(Map<Field, Object> constants, Annotation anno) {
         try {
-        	String name = anno.annotationType().getName();
-        	Object newValue = null;
+            String name = anno.annotationType().getName();
+            Object newValue = null;
 
-	    	if (name.equals(WithConstantString.class.getName())) {
-	    		newValue = (String) anno.annotationType().getMethod("newValue").invoke(anno);
-	    	}
-	    	else if (name.equals(WithConstantInt.class.getName())) {
-	    		newValue = (Integer) anno.annotationType().getMethod("newValue").invoke(anno);
-	    	}
-	    	else {
-	    		return;
-	    	}
+            if (name.equals(WithConstantString.class.getName())) {
+                newValue = anno.annotationType().getMethod("newValue").invoke(anno);
+            } else if (name.equals(WithConstantInt.class.getName())) {
+                newValue = anno.annotationType().getMethod("newValue").invoke(anno);
+            } else {
+                return;
+            }
 
-    		@SuppressWarnings("rawtypes")
-			Class classWithField = (Class) anno.annotationType().getMethod("classWithField").invoke(anno);
-    		String fieldName = (String) anno.annotationType().getMethod("fieldName").invoke(anno);
+            @SuppressWarnings("rawtypes")
+            Class classWithField = (Class) anno.annotationType().getMethod("classWithField").invoke(anno);
+            String fieldName = (String) anno.annotationType().getMethod("fieldName").invoke(anno);
             Field field = classWithField.getDeclaredField(fieldName);
             constants.put(field, newValue);
         } catch (Exception e) {
@@ -310,12 +388,12 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner {
     /**
      * Defines static finals from the provided hash and stores the old values back
      * into the hash.
-     *
+     * <p/>
      * Call it twice with the same hash, and it puts everything back the way it was originally.
      *
      * @param constants
      */
-    private void setupConstants(Map<Field,Object> constants) {
+    private void setupConstants(Map<Field, Object> constants) {
         for (Field field : constants.keySet()) {
             Object newValue = constants.get(field);
             Object oldValue = Robolectric.Reflection.setFinalStaticField(field, newValue);
@@ -364,28 +442,29 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner {
      * this will load H2 by default, the SQLite TestRunner version will override this.
      */
     protected DatabaseMap setupDatabaseMap(Class<?> testClass, DatabaseMap map) {
-    	DatabaseMap dbMap = map;
+        DatabaseMap dbMap = map;
 
-    	if (testClass.isAnnotationPresent(UsingDatabaseMap.class)) {
-	    	UsingDatabaseMap usingMap = testClass.getAnnotation(UsingDatabaseMap.class);
-	    	if(usingMap.value()!=null){
-	    		dbMap = Robolectric.newInstanceOf(usingMap.value());
-	    	} else {
-	    		if (dbMap==null)
-		    		throw new RuntimeException("UsingDatabaseMap annotation value must provide a class implementing DatabaseMap");
-	    	}
-    	}
-    	return dbMap;
+        if (testClass.isAnnotationPresent(UsingDatabaseMap.class)) {
+            UsingDatabaseMap usingMap = testClass.getAnnotation(UsingDatabaseMap.class);
+            if (usingMap.value() != null) {
+                dbMap = Robolectric.newInstanceOf(usingMap.value());
+            } else {
+                if (dbMap == null)
+                    throw new RuntimeException("UsingDatabaseMap annotation value must provide a class implementing DatabaseMap");
+            }
+        }
+        return dbMap;
     }
 
-    private synchronized ShadowMap createShadowMap() {
-        if (shadowMap != null) return shadowMap;
+    protected ShadowMap createShadowMap() {
+        synchronized (RobolectricTestRunner.class) {
+            if (mainShadowMap != null) return mainShadowMap;
 
-        shadowMap = new ShadowMap();
-        for (Class<?> shadowClass : RobolectricBase.DEFAULT_SHADOW_CLASSES) {
-            shadowMap.addShadowClass(shadowClass);
+            mainShadowMap = new ShadowMap.Builder()
+                    .addShadowClasses(RobolectricBase.DEFAULT_SHADOW_CLASSES)
+                    .build();
+            return mainShadowMap;
         }
-        return shadowMap;
     }
 
 
@@ -403,7 +482,10 @@ public class RobolectricTestRunner extends BlockJUnit4ClassRunner {
                     stream = file;
                     Runtime.getRuntime().addShutdownHook(new Thread() {
                         @Override public void run() {
-                            try { file.close(); } catch (Exception ignored) { }
+                            try {
+                                file.close();
+                            } catch (Exception ignored) {
+                            }
                         }
                     });
                 } catch (IOException e) {
